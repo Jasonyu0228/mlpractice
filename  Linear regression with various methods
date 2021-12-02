@@ -1,0 +1,231 @@
+from scipy import linspace, polyval, polyfit, sqrt, stats, randn, optimize
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import time
+import numpy as np
+from sklearn.linear_model import LinearRegression
+import pandas as pd
+#Sample data creation
+#number of points 
+n=int(5e6)
+t=np.linspace(-10,10,n)
+#parameters
+a=3.25; b=-6.5
+x=polyval([a,b],t)
+#add some noise
+xn=x+3*randn(n)
+xvar=np.random.choice(t,size=20)
+yvar=polyval([a,b],xvar)+3*randn(20)
+plt.scatter(xvar,yvar,c='green',edgecolors='k')
+plt.grid(True)
+plt.show()
+#Linear regressison -polyfit - polyfit can be used other orders polynomials
+t1=time.time()
+(ar,br)=polyfit(t,xn,1)
+xr=polyval([ar,br],t)
+#compute the mean square error
+err=sqrt(sum((xr-xn)**2)/n)
+t2=time.time()
+t_polyfit = float(t2-t1)
+
+print('Linear regression using polyfit')
+print('parameters: a=%.2f b=%.2f, ms error= %.3f' % (ar,br,err))
+print("Time taken: {} seconds".format(t_polyfit))
+#Linear regression using stats.linregress
+t1=time.time()
+(a_s,b_s,r,tt,stderr)=stats.linregress(t,xn)
+t2=time.time()
+t_linregress = float(t2-t1)
+
+print('Linear regression using stats.linregress')
+print('a=%.2f b=%.2f, std error= %.3f, r^2 coefficient= %.3f' % (a_s,b_s,stderr,r))
+print("Time taken: {} seconds".format(t_linregress))
+def flin(t,a,b):
+    result = a*t+b
+    return(result)
+t1=time.time()
+p1,_=optimize.curve_fit(flin,xdata=t,ydata=xn,method='lm')
+t2=time.time()
+t_optimize_curve_fit = float(t2-t1)
+
+print('Linear regression using optimize.curve_fit')
+print('parameters: a=%.2f b=%.2f' % (p1[0],p1[1]))
+print("Time taken: {} seconds".format(t_optimize_curve_fit))
+t1=time.time()
+A = np.vstack([t, np.ones(len(t))]).T
+result = np.linalg.lstsq(A, xn)
+ar,br = result[0]
+err = np.sqrt(result[1]/len(xn))
+t2=time.time()
+t_linalg_lstsq = float(t2-t1)
+
+print('Linear regression using numpy.linalg.lstsq')
+print('parameters: a=%.2f b=%.2f, ms error= %.3f' % (ar,br,err))
+print("Time taken: {} seconds".format(t_linalg_lstsq))
+t1=time.time()
+t=sm.add_constant(t)
+model = sm.OLS(x, t)
+results = model.fit()
+ar=results.params[1]
+br=results.params[0]
+t2=time.time()
+t_OLS = float(t2-t1)
+
+print('Linear regression using statsmodels.OLS')
+print('parameters: a=%.2f b=%.2f'% (ar,br))
+print("Time taken: {} seconds".format(t_OLS))
+print(results.summary())
+
+t1=time.time()
+mpinv = np.linalg.pinv(t)
+result = mpinv.dot(x)
+ar = result[1]
+br = result[0]
+t2=time.time()
+t_inv_matrix = float(t2-t1)
+
+#Analytic solution using Moore-Penrose pseudoinverse
+print('Linear regression using Moore-Penrose inverse')
+print('parameters: a=%.2f b=%.2f'% (ar,br))
+print("Time taken: {} seconds".format(t_inv_matrix))
+
+#Analytic solution using simple multiplicative matrix inverse
+t1=time.time()
+m = np.dot((np.dot(np.linalg.inv(np.dot(t.T,t)),t.T)),x)
+ar = m[1]
+br = m[0]
+t2=time.time()
+t_simple_inv = float(t2-t1)
+
+print('Linear regression using simple inverse')
+print('parameters: a=%.2f b=%.2f'% (ar,br))
+print("Time taken: {} seconds".format(t_simple_inv))
+t1=time.time()
+lm = LinearRegression()
+lm.fit(t,x)
+ar=lm.coef_[1]
+br=lm.intercept_
+t2=time.time()
+t_sklearn_linear = float(t2-t1)
+
+print('Linear regression using sklearn.linear_model.LinearRegression')
+print('parameters: a=%.2f b=%.2f'% (ar,br))
+print("Time taken: {} seconds".format(t_sklearn_linear))
+times = [t_polyfit,t_linregress,t_optimize_curve_fit,t_linalg_lstsq,t_OLS,t_inv_matrix,t_simple_inv,t_sklearn_linear]
+plt.figure(figsize=(20,5))
+plt.grid(True)
+plt.bar(left=[l*0.8 for l in range(8)],height=times, width=0.4,
+        tick_label=['Polyfit','Stats.linregress','Optimize.curve_fit',
+                    'numpy.linalg.lstsq','statsmodels.OLS','Moore-Penrose matrix inverse',
+                    'Simple matrix inverse','sklearn.linear_model'])
+plt.show()
+n_min = 50000
+n_max = int(1e7)
+n_levels = 25
+r = np.log10(n_max/n_min)
+l = np.linspace(0,r,n_levels)
+n_data = list((n_min*np.power(10,l)))
+n_data = [int(n) for n in n_data]
+#time_dict={'Polyfit':[],'Stats.lingress':[],'Optimize.curve_fit':[],'linalg.lstsq':[],'statsmodels.OLS':[],
+          #'Moore-Penrose matrix inverse':[],'Simple matrix inverse':[], 'sklearn.linear_model':[]}
+
+l1=['Polyfit', 'Stats.lingress','Optimize.curve_fit', 'linalg.lstsq', 
+ 'statsmodels.OLS', 'Moore-Penrose matrix inverse', 'Simple matrix inverse', 'sklearn.linear_model']
+time_dict = {key:[] for key in l1}
+
+from tqdm import tqdm
+
+for i in tqdm(range(len(n_data))):
+    t=np.linspace(-10,10,n_data[i])
+    #parameters
+    a=3.25; b=-6.5
+    x=polyval([a,b],t)
+    #add some noise
+    xn=x+3*randn(n_data[i])
+    
+    #Linear regressison -polyfit - polyfit can be used other orders polynomials
+    t1=time.time()
+    (ar,br)=polyfit(t,xn,1)
+    t2=time.time()
+    t_polyfit = 1e3*float(t2-t1)
+    time_dict['Polyfit'].append(t_polyfit)
+    
+    #Linear regression using stats.linregress
+    t1=time.time()
+    (a_s,b_s,r,tt,stderr)=stats.linregress(t,xn)
+    t2=time.time()
+    t_linregress = 1e3*float(t2-t1)
+    time_dict['Stats.lingress'].append(t_linregress)
+    
+    #Linear regression using optimize.curve_fit
+    t1=time.time()
+    p1,_=optimize.curve_fit(flin,xdata=t,ydata=xn,method='lm')
+    t2=time.time()
+    t_optimize_curve_fit = 1e3*float(t2-t1)
+    time_dict['Optimize.curve_fit'].append(t_optimize_curve_fit)
+    
+    # Linear regression using np.linalg.lstsq (solving Ax=B equation system)
+    t1=time.time()
+    A = np.vstack([t, np.ones(len(t))]).T
+    result = np.linalg.lstsq(A, xn)
+    ar,br = result[0]
+    t2=time.time()
+    t_linalg_lstsq = 1e3*float(t2-t1)
+    time_dict['linalg.lstsq'].append(t_linalg_lstsq)
+    
+    # Linear regression using statsmodels.OLS
+    t1=time.time()
+    t=sm.add_constant(t)
+    model = sm.OLS(x, t)
+    results = model.fit()
+    ar=results.params[1]
+    br=results.params[0]
+    t2=time.time()
+    t_OLS = 1e3*float(t2-t1)
+    time_dict['statsmodels.OLS'].append(t_OLS)
+    
+    # Linear regression using Moore-Penrose pseudoinverse matrix
+    t1=time.time()
+    mpinv = np.linalg.pinv(t)
+    result = mpinv.dot(x)
+    ar = result[1]
+    br = result[0]
+    t2=time.time()
+    t_mpinverse = 1e3*float(t2-t1)
+    time_dict['Moore-Penrose matrix inverse'].append(t_mpinverse)
+    
+    # Linear regression using simple multiplicative inverse matrix
+    t1=time.time()
+    m = np.dot((np.dot(np.linalg.inv(np.dot(t.T,t)),t.T)),x)
+    ar = m[1]
+    br = m[0]
+    t2=time.time()
+    t_simple_inv = 1e3*float(t2-t1)
+    time_dict['Simple matrix inverse'].append(t_simple_inv)
+    
+    # Linear regression using scikit-learn's linear_model
+    t1=time.time()
+    lm = LinearRegression()
+    lm.fit(t,x)
+    ar=lm.coef_[1]
+    br=lm.intercept_
+    t2=time.time()
+    t_sklearn_linear = 1e3*float(t2-t1)
+    time_dict['sklearn.linear_model'].append(t_sklearn_linear)
+df = pd.DataFrame(data=time_dict)
+df
+plt.figure(figsize=(15,10))
+for i in df.columns:
+    plt.semilogx((n_data),df[i],lw=3)
+plt.xticks([1e5,2e5,5e5,1e6,2e6,5e6,1e7],fontsize=15)
+plt.xlabel("\nSize of the data set (number of samples)",fontsize=15)
+plt.yticks(fontsize=15)
+plt.ylabel("Milliseconds needed for simple linear regression model fit\n",fontsize=15)
+plt.grid(True)
+plt.legend([name for name in df.columns],fontsize=20)
+a1=df.iloc[n_levels-1]
+plt.figure(figsize=(20,5))
+plt.grid(True)
+plt.bar(left=[l*0.8 for l in range(8)],height=a1, width=0.4,
+        tick_label=list(a1.index))
+plt.show()

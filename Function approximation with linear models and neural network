@@ -1,0 +1,298 @@
+import numpy as np
+import pandas as pd
+import math
+import matplotlib.pyplot as plt
+N_points = 100 # Number of points for constructing function
+x_min = 1 # Min of the range of x (feature)
+x_max = 25 # Max of the range of x (feature)
+noise_mean = 0 # Mean of the Gaussian noise adder
+noise_sd = 10 # Std.Dev of the Gaussian noise adder
+test_set_fraction = 0.2
+# Definition of the function with exponential and sinusoidal terms
+def func_trans(x):
+    result = (20*x+3*x**2+0.1*x**3)*np.sin(x)*np.exp(-0.1*x)
+    return (result)
+# Definition of the function without exponential and sinusoidal terms i.e. just the polynomial
+def func_poly(x):
+    result = 20*x+3*x**2+0.1*x**3
+    return (result)
+# Densely spaced points for generating the ideal functional curve
+x_smooth = np.array(np.linspace(x_min,x_max,501))
+
+# Use one of the following
+y_smooth = func_trans(x_smooth)
+#y_smooth = func_poly(x_smooth)
+# Linearly spaced sample points
+X=np.array(np.linspace(x_min,x_max,N_points))
+# Added observational/measurement noise
+noise_x = np.random.normal(loc=noise_mean,scale=noise_sd,size=N_points)
+# Observed output after adding the noise
+y = func_trans(X)+noise_x
+# Store the values in a DataFrame
+df = pd.DataFrame(data=X,columns=['X'])
+df['Ideal y']=df['X'].apply(func_trans)
+df['Sin_X']=df['X'].apply(math.sin)
+df['y']=y
+df.head()
+df.plot.scatter('X','y',title='True process and measured samples\n',
+                grid=True,edgecolors=(0,0,0),c='blue',s=60,figsize=(10,6))
+plt.plot(x_smooth,y_smooth,'k')
+
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LassoCV
+from sklearn.linear_model import RidgeCV
+from sklearn.ensemble import AdaBoostRegressor
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import make_pipeline
+X_train, X_test, y_train, y_test = train_test_split(df[['X','Sin_X']], df['y'], test_size=test_set_fraction)
+
+#X_train=X_train.reshape(X_train.size,1)
+#y_train=y_train.reshape(y_train.size,1)
+#X_test=X_test.reshape(X_test.size,1)
+#y_test=y_test.reshape(y_test.size,1)
+
+#X_train=X_train.reshape(-1,1)
+#y_train=y_train.reshape(-1,1)
+#X_test=X_test.reshape(-1,1)
+#y_test=y_test.reshape(-1,1)
+
+from sklearn import preprocessing
+X_scaled = preprocessing.scale(X_train)
+y_scaled = preprocessing.scale(y_train)
+
+# Regression model parameters
+ridge_alpha = tuple([10**(x) for x in range(-3,0,1) ]) # Alpha (regularization strength) of ridge regression
+# Alpha (regularization strength) of LASSO regression
+lasso_eps = 0.0001
+lasso_nalpha=20
+lasso_iter=5000
+
+# Min and max degree of polynomials features to consider
+degree_min = 2
+degree_max = 8
+linear_sample_score = []
+poly_degree = []
+rmse=[]
+t_linear=[]
+import time
+for degree in range(degree_min,degree_max+1):
+    t1=time.time()
+    #model = make_pipeline(PolynomialFeatures(degree), RidgeCV(alphas=ridge_alpha,normalize=True,cv=5))
+    model = make_pipeline(PolynomialFeatures(degree), LassoCV(eps=lasso_eps,n_alphas=lasso_nalpha, 
+                                                                  max_iter=lasso_iter,normalize=True,cv=5))
+    #model = make_pipeline(PolynomialFeatures(degree), LinearRegression(normalize=True))
+    model.fit(X_train, y_train)
+    t2=time.time()
+    t = t2-t1
+    t_linear.append(t)
+    test_pred = np.array(model.predict(X_test))
+    RMSE=np.sqrt(np.sum(np.square(test_pred-y_test)))
+    test_score = model.score(X_test,y_test)
+    linear_sample_score.append(test_score)
+    rmse.append(RMSE)
+    poly_degree.append(degree)
+    #print("Test score of model with degree {}: {}\n".format(degree,test_score))
+       
+    plt.figure()
+    plt.title("Predicted vs. actual for polynomial of degree {}".format(degree),fontsize=15)
+    plt.xlabel("Actual values")
+    plt.ylabel("Predicted values")
+    plt.scatter(y_test,test_pred)
+    plt.plot(y_test,y_test,'r',lw=2)
+linear_sample_score
+plt.figure(figsize=(8,5))
+plt.grid(True)
+plt.plot(poly_degree,rmse,lw=3,c='red')
+plt.title("Model complexity (highest polynomial degree) vs. test score\n",fontsize=20)
+plt.xlabel ("\nDegree of polynomial",fontsize=20)
+plt.ylabel ("Root-mean-square error on test set",fontsize=15)
+df_score = pd.DataFrame(data={'degree':[d for d in range(degree_min,degree_max+1)],
+                              'Linear sample score':linear_sample_score})
+# Save the best R^2 score
+r2_linear = max(linear_sample_score)
+print("Best R^2 score for linear polynomial degree models:",r2_linear)
+plt.figure(figsize=(8,5))
+plt.grid(True)
+plt.plot(poly_degree,linear_sample_score,lw=3,c='red')
+plt.xlabel ("\nModel Complexity: Degree of polynomial",fontsize=20)
+plt.ylabel ("R^2 score on test set",fontsize=15)
+
+#1-hidden layer (Shallow) network
+import tensorflow as tf
+learning_rate = 1e-6
+training_epochs = 150000
+
+n_input = 1  # Number of features
+n_output = 1  # Regression output is a number only
+
+n_hidden_layer = 100 # layer number of features
+weights = {
+    'hidden_layer': tf.Variable(tf.random_normal([n_input, n_hidden_layer])),
+    'out': tf.Variable(tf.random_normal([n_hidden_layer, n_output]))
+}
+biases = {
+    'hidden_layer': tf.Variable(tf.random_normal([n_hidden_layer])),
+    'out': tf.Variable(tf.random_normal([n_output]))
+}
+# tf Graph input
+x = tf.placeholder("float32", [None,n_input])
+y = tf.placeholder("float32", [None,n_output])
+# Hidden layer with RELU activation
+layer_1 = tf.add(tf.matmul(x, weights['hidden_layer']),biases['hidden_layer'])
+layer_1 = tf.sin(layer_1)
+
+# Output layer with linear activation
+ops = tf.add(tf.matmul(layer_1, weights['out']), biases['out'])
+# Define loss and optimizer
+cost = tf.reduce_mean(tf.squared_difference(ops,y))
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+from tqdm import tqdm
+import time
+
+# Initializing the variables
+init = tf.global_variables_initializer()
+
+# Empty lists for book-keeping purpose
+epoch=0
+log_epoch = []
+epoch_count=[]
+acc=[]
+loss_epoch=[]
+
+X_train, X_test, y_train, y_test = train_test_split(df['X'], df['y'], 
+                                     test_size=test_set_fraction)
+
+X_train=X_train.reshape(X_train.size,1)
+y_train=y_train.reshape(y_train.size,1)
+X_test=X_test.reshape(X_test.size,1)
+y_test=y_test.reshape(y_test.size,1)
+
+# Launch the graph and time the session
+t1=time.time()
+with tf.Session() as sess:
+    sess.run(init)    
+    # Loop over epochs
+    for epoch in tqdm(range(training_epochs)):
+        # Run optimization process (backprop) and cost function (to get loss value)
+        _,l=sess.run([optimizer,cost], feed_dict={x: X_train, y: y_train})
+        loss_epoch.append(l) # Save the loss for every epoch        
+        epoch_count.append(epoch+1) #Save the epoch count
+       
+        # print("Epoch {}/{} finished. Loss: {}, Accuracy: {}".format(epoch+1,training_epochs,round(l,4),round(accu,4)))
+        #print("Epoch {}/{} finished. Loss: {}".format(epoch+1,training_epochs,round(l,4)))
+    w=sess.run(weights)
+    b = sess.run(biases)
+    yhat=sess.run(ops,feed_dict={x:X_test})
+t2=time.time()
+
+time_SNN = t2-t1
+plt.plot(loss_epoch)
+# Total variance
+SSt_SNN = np.sum(np.square(y_test-np.mean(y_test)))
+# Residual sum of squares
+SSr_SNN = np.sum(np.square(yhat-y_test))
+# Root-mean-square error
+RMSE_SNN = np.sqrt(np.sum(np.square(yhat-y_test)))
+# R^2 coefficient
+r2_SNN = 1-(SSr_SNN/SSt_SNN)
+
+print("RMSE error of the shallow neural network:",RMSE_SNN)
+print("R^2 value of the shallow neural network:",r2_SNN)
+plt.figure(figsize=(10,6))
+plt.title("Predicted vs. actual (test set) for shallow (1-hidden layer) neural network\n",fontsize=15)
+plt.xlabel("Actual values (test set)")
+plt.ylabel("Predicted values")
+plt.scatter(y_test,yhat,edgecolors='k',s=100,c='green')
+plt.grid(True)
+plt.plot(y_test,y_test,'r',lw=2)
+
+
+#####Deep Neural network for regression¶
+import tensorflow as tf
+learning_rate = 1e-6
+training_epochs = 15000
+
+n_input = 1  # Number of features
+n_output = 1  # Regression output is a number only
+
+n_hidden_layer_1 = 30 # Hidden layer 1
+n_hidden_layer_2 = 30 # Hidden layer 2
+# Store layers weight & bias as Variables classes in dictionaries
+weights = {
+    'hidden_layer_1': tf.Variable(tf.random_normal([n_input, n_hidden_layer_1])),
+    'hidden_layer_2': tf.Variable(tf.random_normal([n_hidden_layer_1, n_hidden_layer_2])),
+    'out': tf.Variable(tf.random_normal([n_hidden_layer_2, n_output]))
+}
+biases = {
+    'hidden_layer_1': tf.Variable(tf.random_normal([n_hidden_layer_1])),
+    'hidden_layer_2': tf.Variable(tf.random_normal([n_hidden_layer_2])),
+    'out': tf.Variable(tf.random_normal([n_output]))
+}
+# tf Graph input
+x = tf.placeholder("float32", [None,n_input])
+y = tf.placeholder("float32", [None,n_output])
+# Hidden layer with activation
+layer_1 = tf.add(tf.matmul(x, weights['hidden_layer_1']),biases['hidden_layer_1'])
+layer_1 = tf.sin(layer_1)
+
+layer_2 = tf.add(tf.matmul(layer_1, weights['hidden_layer_2']),biases['hidden_layer_2'])
+layer_2 = tf.nn.relu(layer_2)
+
+# Output layer with linear activation
+ops = tf.add(tf.matmul(layer_2, weights['out']), biases['out'])
+# Define loss and optimizer
+cost = tf.reduce_mean(tf.squared_difference(ops,y))
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+from tqdm import tqdm
+import time
+# Initializing the variables
+init = tf.global_variables_initializer()
+
+# Empty lists for book-keeping purpose
+epoch=0
+log_epoch = []
+epoch_count=[]
+acc=[]
+loss_epoch=[]
+r2_DNN = []
+test_size = []
+
+for i in range(5):
+    X_train, X_test, y_train, y_test = train_test_split(df['X'], df['y'], 
+                                     test_size=test_set_fraction)
+
+    X_train=X_train.reshape(X_train.size,1)
+    y_train=y_train.reshape(y_train.size,1)
+    X_test=X_test.reshape(X_test.size,1)
+    y_test=y_test.reshape(y_test.size,1)
+    # Launch the graph and time the session
+    with tf.Session() as sess:
+        sess.run(init)    
+        # Loop over epochs
+        for epoch in tqdm(range(training_epochs)):
+            # Run optimization process (backprop) and cost function (to get loss value)
+            #r1 = int(epoch/10000)
+            #learning_rate = learning_rate-r1*3e-6
+            #optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+            _,l=sess.run([optimizer,cost], feed_dict={x: X_train, y: y_train})
+            
+        yhat=sess.run(ops,feed_dict={x:X_test})
+
+    #test_size.append(0.5-(i*0.04))
+    # Total variance
+    SSt_DNN = np.sum(np.square(y_test-np.mean(y_test)))
+    # Residual sum of squares
+    SSr_DNN = np.sum(np.square(yhat-y_test))
+    # Root-mean-square error
+    RMSE_DNN = np.sqrt(np.sum(np.square(yhat-y_test)))
+    # R^2 coefficient
+    r2 = 1-(SSr_DNN/SSt_DNN)
+    r2_DNN.append(r2)
+    print("Run: {} finished. Score: {}".format(i+1,r2))
+plt.figure(figsize=(10,6))
+plt.title("\nR2-score for cross-validation runs of \ndeep (2-layer) neural network\n",fontsize=25)
+plt.xlabel("\nCross-validation run with random test/train split #",fontsize=15)
+plt.ylabel("R2 score (test set)\n",fontsize=15)
+plt.scatter([i+1 for i in range(5)],r2_DNN,edgecolors='k',s=100,c='green')
+plt.grid(True)
